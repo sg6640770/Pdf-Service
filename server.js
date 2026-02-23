@@ -1,18 +1,22 @@
 const express = require("express");
 const puppeteer = require("puppeteer");
-const bodyParser = require("body-parser");
 const cors = require("cors");
 
 const app = express();
+
+// Middleware
 app.use(cors());
-app.use(bodyParser.json({ limit: "10mb" }));
+app.use(express.json({ limit: "10mb" }));
 
 // Health check
 app.get("/", (req, res) => {
   res.send("PDF Service Running 🚀");
 });
 
+// Generate PDF Route
 app.post("/generate-pdf", async (req, res) => {
+  let browser;
+
   try {
     const { html } = req.body;
 
@@ -20,9 +24,17 @@ app.post("/generate-pdf", async (req, res) => {
       return res.status(400).json({ error: "HTML content required" });
     }
 
-    const browser = await puppeteer.launch({
-      headless: "new",
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    // Launch Puppeteer (Render-safe config)
+    browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--no-zygote",
+        "--single-process"
+      ]
     });
 
     const page = await browser.newPage();
@@ -61,15 +73,22 @@ app.post("/generate-pdf", async (req, res) => {
       "Content-Disposition": "attachment; filename=agreement.pdf",
     });
 
-    res.send(pdfBuffer);
+    return res.send(pdfBuffer);
 
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "PDF generation failed" });
+    console.error("PDF Generation Error:", error);
+
+    if (browser) {
+      await browser.close();
+    }
+
+    return res.status(500).json({ error: "PDF generation failed" });
   }
 });
 
-const PORT = 2000;
+// ✅ IMPORTANT: Use Render dynamic port
+const PORT = process.env.PORT || 2000;
+
 app.listen(PORT, () => {
   console.log(`PDF Server running on port ${PORT}`);
 });
